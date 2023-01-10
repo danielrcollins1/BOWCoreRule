@@ -1,158 +1,200 @@
-//********************************************************************
-//  BOWCoreRule.java
-//    Simulation of Book of War core mechanic.
-//  Copyright (c) 2011 Daniel R. Collins. All rights reserved.
-//  See the bottom of this file for any licensing information.
-//********************************************************************
+/******************************************************************************
+*  BOWCoreRule.java
+*    Simulation of Book of War core mechanic.
+*
+*  @author   Daniel R. Collins
+*  @since    2011-10-17
+******************************************************************************/
 
 class BOWCoreRule {
 
 	//-----------------------------------------------------------------
 	//  Simulation constants
 	//-----------------------------------------------------------------
-	final int ATK_LEVEL = 0;              // Fighting ability of attacker
-	final int HD_SIDES = 6;               // Hit dice sides
-	final int DD_SIDES = 6;               // Damage dice sides
-	final int DAMAGE_DICE = 1;            // Number of damage dice
-	final int FRONT_LINE = 5;             // Men in front line of figure
-	final int FIGURE_MEN = 10;            // Total men in figure
-	final int NUM_ROUNDS = 100000;        // Rounds of combat
-	final boolean SHOW_D6_TARGET = true;  // Convert kills to d6 target
+	static final int ATK_LEVEL = 1;              // Fighting ability
+	static final int ATK_MOD = 0;                // Attack modifier
+	static final int HD_SIDES = 6;               // Hit dice sides
+	static final int DD_SIDES = 6;               // Damage dice sides
+	static final int DAMAGE_DICE = 1;            // Number of damage dice
+	static final int DAMAGE_MOD = 0;             // Damage modifier
+	static final int FRONT_LINE = 5;             // Men in front line
+	static final int FIGURE_MEN = 10;            // Total men in figure
+	static final int NUM_ROUNDS = 100000;        // Rounds of combat
+	static final boolean POISON_ATK = false;     // Poison attack form
+	static final boolean SHOW_D6_TARGET = true;  // Convert kills to d6
 
 	//-----------------------------------------------------------------
-	//  Man class
+	//  Inner class
 	//-----------------------------------------------------------------
+
+	/**
+	* One fighting man.
+	*/
 	static class Man {
-		int hp;
-		void takeDamage (int dam) { hp -= dam; }
-		boolean isDead () { return hp <= 0; }			
+		private int hp;
+		void takeDamage(int dam) { hp -= dam; }
+		void autoKill() { hp = 0; }
+		boolean isDead() { return hp <= 0; }
 
-		Man (int HD, int sides) { 
+		Man(int hitDice, int sides) { 
 			hp = 0;
-			for (int i = 0; i < HD; i++) {
+			for (int i = 0; i < hitDice; i++) {
 				hp += (int) (Math.random() * sides) + 1;
 			}
 		}
 	}
 
 	//-----------------------------------------------------------------
-	//  Die roll (single)
+	//  Class methods
 	//-----------------------------------------------------------------
-	int die (int sides) {
+
+	/**
+	* Roll a single die.
+	* @param sides number of sides on the die.
+	* @return the value of the die-roll.
+	*/
+	int rollDie(int sides) {
 		return (int) (Math.random() * sides) + 1;
 	}
 
-	//-----------------------------------------------------------------
-	//  Roll damage for one hit
-	//-----------------------------------------------------------------
-	int rollDamage () {
-		int damage = 0;
+	/**
+	* Roll damage for one hit.
+	* @return the damage.
+	*/
+	int rollDamage() {
+		int damage = DAMAGE_MOD;
 		for (int i = 0; i < DAMAGE_DICE; i++) {
-			damage += die(DD_SIDES);
+			damage += rollDie(DD_SIDES);
 		}
 		return damage;	
 	}
 
-	//-----------------------------------------------------------------
-	//  One attack on a given man
-	//    Returns true if killed
-	//-----------------------------------------------------------------
-	void oneAttack (int HD, int AC, Man man) {
-		if (die(20) + AC + ATK_LEVEL >= 20) {
+	/**
+	* Make one attack on a given man.
+	* @param hitDice hit dice of the target.
+	* @param armorClass armor class of the target.
+	* @param man the target man.
+	*/
+	void makeAttack(int hitDice, int armorClass, Man man) {
+		if (rollDie(20) + armorClass + ATK_LEVEL + ATK_MOD >= 20) {
 			man.takeDamage(rollDamage());
+			if (POISON_ATK) {
+				if (rollDie(20) + hitDice + 4 < 20) {
+					man.autoKill();				
+				}			
+			}
 		}
 	}
 
-	//-----------------------------------------------------------------
-	//  One round of combat (returns men killed)
-	//    Each man in front row is attacked once
-	//-----------------------------------------------------------------
-	int oneRound (int HD, int AC, Man[] front) {
+	/**
+	* Run one round of combat.
+	* Each man in front row is attacked once.
+	* @param hitDice hit dice of the targets.
+	* @param armorClass armor class of the targets.
+	* @param front array of men in front line.
+	* @return number of men killed.
+	*/
+	int runRound(int hitDice, int armorClass, Man[] front) {
 		int killed = 0;
 		for (int i = 0; i < front.length; i++) {
-			oneAttack(HD, AC, front[i]);
+			makeAttack(hitDice, armorClass, front[i]);
 			if (front[i].isDead()) {
-				front[i] = new Man(HD, HD_SIDES);
+				front[i] = new Man(hitDice, HD_SIDES);
 				killed++;
 			}
 		}
 		return killed;
 	}
 
-	//-----------------------------------------------------------------
-	//  One battle (returns men killed)
-	//-----------------------------------------------------------------
-	int oneBattle (int HD, int AC) {
+	/**
+	* Run one battle.
+	* @param hitDice hit dice of targets.
+	* @param armorClass armor class of targets.
+	* @return number of men killed.
+	*/
+	int runBattle(int hitDice, int armorClass) {
 
 		// Init front line
 		Man[] front = new Man[FRONT_LINE];
 		for (int i = 0; i < FRONT_LINE; i++) {
-			front[i] = new Man(HD, HD_SIDES);		
+			front[i] = new Man(hitDice, HD_SIDES);
 		}
 	
 		// Combat loop
 		int killed = 0;
 		for (int i = 0; i < NUM_ROUNDS; i++) {
-			killed += oneRound(HD, AC, front);			
+			killed += runRound(hitDice, armorClass, front);
 		}
 		return killed;
 	}
 
-	//-----------------------------------------------------------------
-	//  Mean figure kills (per BOW turn)
-	//-----------------------------------------------------------------
-	double meanFigureKills (int killed, int roundsPerTurn) {
-		return (double) killed / FIGURE_MEN / NUM_ROUNDS * roundsPerTurn;
+	/** 
+	* Compute mean number of figures killed per BOW turn.
+	* @param killed total number of men killed in battle.
+	* @param roundsPerTurn number of rounds per turn.
+	* @return mean number of figures killed per turn.
+	*/
+	double getMeanFigureKills(int killed, int roundsPerTurn) {
+		return (double) 
+			killed / FIGURE_MEN / NUM_ROUNDS * roundsPerTurn;
 	}
 
-	//-----------------------------------------------------------------
-	//  Mean figure hits (per BOW turn)
-	//    Pro-rates kills per HD (i.e., 10 RPG HD worth)
-	//-----------------------------------------------------------------
-	double meanFigureHits (int killed, int roundsPerTurn, int HD) {
-		return meanFigureKills(killed, roundsPerTurn) * HD;
+	/**
+	* Compute mean number of figure-hits per BOW turn.
+	* Pro-rates kills per hit die (i.e., 10 RPG HD worth).
+	* @param killed total number of men killed in battle.
+	* @param roundsPerTurn number of rounds per turn.
+	* @param hitDice hit dice of targets.
+	* @return mean number of figure-hits per turn.
+	*/
+	double getMeanFigureHits(int killed, int roundsPerTurn, int hitDice) {
+		return getMeanFigureKills(killed, roundsPerTurn) * hitDice;
 	}
 
-	//-----------------------------------------------------------------
-	//  d6Target
-	//    Converts a probability to a target on d6
-	//-----------------------------------------------------------------
-	int d6Target (double p) {
-		return (int) (7 - 6 * p + 0.5);
+	/**
+	* Convert a probability to a target on d6.
+	* @param probability the success probability.
+	* @return target on a d6 roll.
+	*/
+	int getD6Target(double probability) {
+		return (int) (7 - 6 * probability + 0.5);
 	}
 
-	//-----------------------------------------------------------------
-	//  Print function
-	//-----------------------------------------------------------------
-	void printf (String s) {
-		System.out.print(s);
+	/**
+	* Print function.
+	* @param str string to print.
+	*/
+	void printf(String str) {
+		System.out.print(str);
 	}
 
-	//-----------------------------------------------------------------
-	//  Make table
-	//-----------------------------------------------------------------
-	public void makeTable (int roundsPerTurn) {
+	/**
+	* Make table of simulated attack results.
+	* @param roundsPerTurn number of rounds per turn.
+	*/
+	public void makeTable(int roundsPerTurn) {
 	
 		// Title
-		printf("Core Mechanic @ " + roundsPerTurn + " round(s) per turn:\n\n");
+		printf("Core Mechanic @ " 
+			+ roundsPerTurn + " round(s) per turn:\n\n");
   
 		// Header
 		printf("\t\t\tHD\nAC\t");
-		for (int HD = 1; HD <= 8; HD++) {
-			printf(HD + "\t");
+		for (int hitDice = 1; hitDice <= 8; hitDice++) {
+			printf(hitDice + "\t");
 		}
-		printf("\n----------------------------\n");
+		printf("\n");
 
 		// Body
-		for (int AC = 10; AC >= 1; AC -= 3) {
-			printf(AC + "\t");
-			for (int HD = 1; HD <= 8; HD++) {
-				int battleKills = oneBattle(HD, AC);
-				double hitChance = meanFigureHits(battleKills, roundsPerTurn, HD);
-				if (SHOW_D6_TARGET)
-					printf(d6Target(hitChance) + "\t");
-				else
-					printf(String.format("%.2g\t", hitChance));
+		for (int armor = 10; armor >= 1; armor -= 3) {
+			printf(armor + "");
+			for (int hitDice = 1; hitDice <= 8; hitDice++) {
+				int battleKills = runBattle(hitDice, armor);
+				double hitChance = getMeanFigureHits(
+					battleKills, roundsPerTurn, hitDice);
+				printf(SHOW_D6_TARGET
+					? "\t" + getD6Target(hitChance)
+					: String.format("\t%.2g", hitChance));
 			}
 			printf("\n");
 		}
@@ -161,15 +203,15 @@ class BOWCoreRule {
 		printf("\n");
 	}	
 
-	//-----------------------------------------------------------------
-	//  Main method
-	//-----------------------------------------------------------------
-	public static void main (String[] args) {
+	/**
+	* Main application method.
+	* @param args command-line argumrnts.
+	*/
+	public static void main(String[] args) {
 		BOWCoreRule bcr = new BOWCoreRule();
-		for (int AC = 10; AC >= 1; AC -= 3)
-			bcr.oneBattle(1, AC);
-		for (int rounds = 1; rounds <= 6; rounds++)
+		for (int rounds = 1; rounds <= 6; rounds++) {
 			bcr.makeTable(rounds);
+		}
 	}
 }
 
